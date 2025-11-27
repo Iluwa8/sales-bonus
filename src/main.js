@@ -4,15 +4,9 @@
  * @param _product карточка товара
  * @returns {number}
  */
-function calculateSimpleRevenue(arg1, arg2, arg3) {
-    // если передали объект
-    if (arg1 && typeof arg1 === 'object') {
-        const { discount = 0, sale_price = 0, quantity = 0 } = arg1;
-        const price = Number(sale_price) || 0;
-        const qty = Number(quantity) || 0;
-        const disc = Number(discount) || 0;
-        return price * qty * (1 - disc / 100);
-    }
+function calculateSimpleRevenue(purchase) {
+    const { price, discount = 1 - (purchase.discount / 100), quantity } = purchase;
+    return price * quantity * discount;
 }
 
 /**
@@ -25,6 +19,16 @@ function calculateSimpleRevenue(arg1, arg2, arg3) {
 function calculateBonusByProfit(index, total, seller) {
     // @TODO: Расчет бонуса от позиции в рейтинге
     const {profit} = seller;
+
+    if (index === 0) {
+        return profit * 0.15;
+    } else if (index === 1 || index === 2){
+        return profit * 0.10;
+    } else if (index === total - 1) {
+        return 0;
+    } else {
+        return profit * 0.05;
+    }
 
 }
 
@@ -84,7 +88,7 @@ function analyzeSalesData(data, options) {
     data.purchase_records.forEach(record => {
         const seller = sellerIndex[record.seller_id];
         seller.sales_count += 1;
-        seller.revenue += record.total_amount;
+        // seller.revenue += record.total_amount;
 
 
         record.items.forEach(item => {
@@ -92,9 +96,17 @@ function analyzeSalesData(data, options) {
             const qnt = Number(item.quantity);
             const price = Number(product.purchase_price);
             const cost = qnt * price;
-            const revenue = calculateRevenue(item);
-            const profit = (Number(revenue)) - cost;
-            seller.profit += profit; 
+
+            // const revenue = calculateRevenue({
+            //     price: Number(item.price),         
+            //     discount: Number(item.discount ?? 0),
+            //     quantity: Number(item.quantity)
+            // }, product);
+            const revenue = calculateRevenue(item, product);
+            seller.revenue += revenue;  
+
+            const profit = revenue - cost;
+            seller.profit += profit;
 
             if (!seller.products_sold[item.sku]) {
                 seller.products_sold[item.sku] = 0;
@@ -102,12 +114,21 @@ function analyzeSalesData(data, options) {
             seller.products_sold[item.sku] += qnt;
         });
 
-        const sortedByProfit = sellerStats.sort((a, b) => a.profit - b.profit);
-        sortedByProfit.forEach((seller, index) => {
-            seller.bonus = calculateBonus(index, sortedByProfit.length, seller);
-        });
-
     });
+
+    const sortedByProfit = [...sellerStats].sort((a, b) => b.profit - a.profit);
+
+    sortedByProfit.forEach((seller, index) => {
+        seller.bonus = calculateBonus(index, sortedByProfit.length, seller);
+
+        seller.top_products = Object
+            .entries(seller.products_sold)
+            .map(([sku, quantity]) => ({ sku, quantity }))
+            .sort((a, b) => b.quantity - a.quantity)
+            .slice(0, 10);
+    });
+
+    return sellerStats;
 
     // @TODO: Сортировка продавцов по прибыли
 
